@@ -1,0 +1,312 @@
+---
+title: Application to Northeastern United States data
+author: Joshua P. French and Mohammad Meysami
+date: ''
+# format: html
+format: ipynb
+jupyter: ir
+execute:
+  output: false
+self-contained: true
+title-block-banner: true
+wrap: 'none'
+---
+
+This notebook reproduces the "Application to Northeastern United States data" analysis of Meysami, French, and Lipner (2023+) presented in *Prefiltered Component-based Greedy (PreCoG) Scan Method*.
+
+To open this information in an interactive Colab notebook, click the Open in Colab graphic below.
+
+<a href="https://colab.research.google.com/github/jfrench/ipynb/blob/master/neast-precog.ipynb">
+   <img src="https://colab.research.google.com/assets/colab-badge.svg">
+</a>
+
+# Setup
+
+We first set the random number seed to ensure reproducibility.
+
+```{r}
+set.seed(112) #ensure reproducibility
+```
+
+We require both the **smerc** and **sf** packages 
+to perform this analysis, so we install and attach those
+packages as necessary.
+
+```{r}
+if (!require("smerc")) {
+  install.packages("smerc", repos = "https://cran.rstudio.com/")
+  library(smerc)
+}
+```
+
+```{r}
+if (!require("sf")) {
+  system('sudo add-apt-repository ppa:ubuntugis/ubuntugis-unstable')
+  system('sudo apt-get update')
+  system('sudo apt-get install libudunits2-dev libgdal-dev libgeos-dev libproj-dev')
+  install.packages("sf", repos = "https://cran.rstudio.com/")
+  library(sf)
+}
+```
+
+We now load the data sets from the **smerc** package
+that we will need for the analysis.
+
+The `neast` data set is a an `sf` object containing data related to breast cancer mortality in the Northeastern United States. The data include several variables observed for 245 counties (or similar) as well polygon information defined using longitude/latitude coordinates in the WGS84 coordinate system.  The following variables are included in the object:
+
+- `id`: A name-based id for each county.
+- `cases`: The number of breast cancer mortality cases between 1988-1992.
+- `population`: The number of residents in the county based on 1990 U.S. census results.
+- `x`: An x coordinate of a centroid associated with each county provided by Kulldorff et al. (2003). See Details.
+- `y`: A y coordinate of a centroid associated with each county provided by Kulldorff et al. (2003). See Details.
+
+The `neastw` data set is a binary adjacency matrix indicating
+which regions share a border.
+
+```{r}
+data("neast")
+data("neastw")
+```
+
+We create a choropleth map of the `cases` variable using the 
+code below.
+
+```{r}
+plot(neast["cases"])
+```
+
+Lastly, we set certain arguments to make the subsequent analysis easier.
+
+We create a matrix, `coords`, of the centroid coordinates for the regions in the study area.
+
+```{r}
+coords <-  neast[, c("x", "y"), drop = TRUE]
+```
+
+We also create `pop` and `cases` objects from the correspondindg variable in the `neast` object to simplify argument
+passing in the analysis below.
+
+```{r}
+pop <- neast$population
+cases <- neast$cases
+```
+
+# Method applications
+
+We apply the following scan methods to the `neast` data below.
+
+- The PreCoG scan method (French, Meysami, and Lipner, 2023+)
+- The circular scan method (Kulldorff and Nagarwalla, 1995; Kulldorff, 1997).
+- The elliptic scan method (Kulldorff et al., 2006).
+2004)
+- The flexibly-shaped (flex15) scan method (Tango
+and Takahashi, 2005).
+- The restricted flexible (rflex) scan method (Tango and Takhashi, 2012).
+- The double connection (dc) scan method (Costa et al.,
+2012).
+- The fast subset scan method (Neill, 2012).
+- The upper level set (ULS) scan method (Patil and Taillie, 2012).
+The p-values are for each method are computed using `999` simulated data sets under the constant risk hypothesis.
+
+We apply the PreCoG scan method below. 
+
+```{r}
+out1 <- precog.test(coords = coords, cases = cases,
+                    pop = pop, w = neastw, nsim = 999)
+```
+
+We apply the circular scan method below.
+
+```{r}
+out2 <- scan.test(coords = coords, cases = cases,
+                  pop = pop, nsim = 999)
+```
+
+We apply the elliptic scan method with eccentricity penalty of 0 below.
+
+```{r}
+out3 <- elliptic.test(coords = coords, cases = cases,
+                      pop = pop, nsim = 99, a = 0)
+```
+
+We apply the flexible scan method with candidate zones having up to $K=15$ regions below.
+
+```{r}
+out4 <- flex_test(coords = coords, cases = cases, pop = pop,
+                  w = neastw, k = 15, nsim = 999)
+```
+
+We apply the restricted flexible scan method below with candidate zones having up to $K=50$ regions and filtering the regions based on whether the middle p-value is less than $\alpha_1 = 0.20$.
+
+```{r}
+out5 <- rflex.test(coords = coords, cases = cases,
+                   pop = pop, w= neastw, k = 50, nsim = 999)
+```
+
+We apply the double connection scan method below.
+
+```{r}
+out6 <- dc.test(coords = coords, cases = cases, pop = pop,
+                w = neastw, nsim = 999)
+```
+
+We apply the fast scan method below.
+
+```{r}
+out7 <- fast.test(coords = coords, cases = cases, pop = pop,
+                  nsim = 999)
+```
+
+We apply the ULS scan method below.
+
+```{r}
+out8 <- uls.test(coords = coords, cases = cases, pop = pop,
+                 w = neastw, nsim = 999)
+```
+
+# Plotting the results
+
+We begin by setting up the color palette and set the plotting
+patterns for each method.
+
+```{r}
+# color palette
+col_pal <-  c("#1B9E77", "#D95F02", "#7570B3", "#E7298A",
+              "#66A61E", "#E6AB02", "#A6761D", "#666666",
+              "#1B9E77", "#D95F02", "#7570B3", "#E7298A",
+              "#66A61E", "#E6AB02", "#A6761D", "#666666")
+# number of detected clusters
+nc1 <- nclusters(out1)
+# color clusters for out1
+col1 <- color.clusters(out1, col = col_pal[seq_len(nc1)])
+nc2 <- nclusters(out2)
+col2 <- color.clusters(out2, col = col_pal[seq_len(nc2)])
+nc3 <- nclusters(out3)
+col3 <- color.clusters(out3, col = col_pal[seq_len(nc3)])
+nc4 <- nclusters(out4)
+col4 <- color.clusters(out4, col = col_pal[seq_len(nc4)])
+nc5 <- nclusters(out5)
+col5 <- color.clusters(out5, col = col_pal[seq_len(nc5)])
+nc6 <- nclusters(out6)
+col6 <- color.clusters(out6, col = col_pal[seq_len(nc6)])
+nc7 <- nclusters(out7)
+col7 <- color.clusters(out7, col = col_pal[seq_len(nc7)])
+nc8 <- nclusters(out8)
+col8 <- color.clusters(out8, col = col_pal[seq_len(nc8)])
+```
+
+We now construct the plot associated with each method. The title indicates the methods for which the results are being plotted.
+
+```{r}
+plot(st_geometry(neast), col = col1)
+title("PreCoG")
+```
+
+```{r}
+plot(st_geometry(neast), col = col2)
+title("circular")
+```
+
+```{r}
+plot(st_geometry(neast), col = col3)
+title("elliptic")
+```
+
+```{r}
+plot(st_geometry(neast), col = col4)
+title("flex15")
+```
+
+```{r}
+plot(st_geometry(neast), col = col5)
+title("rflex")
+```
+
+```{r}
+plot(st_geometry(neast), col = col6)
+title("dc")
+```
+
+```{r}
+plot(st_geometry(neast), col = col7)
+title("fast")
+```
+
+```{r}
+plot(st_geometry(neast), col = col8)
+title("uls")
+```
+
+# Tabular results
+
+We now construct a table summarizing the clusters detected by the different methods.
+
+We create a helper function to extract the data.
+
+```{r}
+# function to get relevant data
+get_table_data <- function(x, method) {
+  data.frame(
+    method = method,
+    cluster = paste("cluster", seq_along(x$clusters)),
+    pop = sgetElement(x$clusters, "population"),
+    cases = sgetElement(x$clusters, "cases"),
+    ex = round(sgetElement(x$clusters, "expected"), 0),
+    smr = round(sgetElement(x$clusters, "smr"), 3),
+    nregions = sapply(lgetElement(x$clusters, "locids"), length),
+    pvalue = sgetElement(x$clusters, "pvalue")
+  )
+}
+```
+
+We next extract the data and reformat it into a data frame.
+
+```{r}
+table_list <- mapply(get_table_data,
+                     x = list(out1, out2, out3, out4,
+                              out5, out6, out7, out8),
+                     method = c("precog", "circular",
+                                "elliptic", "flex15",
+                                "rflex", "dc", "fast",
+                                "uls"),
+                     SIMPLIFY = FALSE)
+table_data <- do.call(rbind, table_list)
+```
+
+We now disply the final results.
+
+```{r}
+table_data
+```
+
+# References
+
+Costa, M. A., Assunção, R. M., and Kulldorff, M. (2012). Constrained spanning tree algorithms for irregularlyshaped
+spatial clustering. Computational Statistics & Data Analysis, 56(6):1771–1783.
+
+French, J. P., Meysami, M., Hall, L. M., Weaver, N. E., Nguyen, M. C., and Panter, L. (2022). A comparison of
+spatial scan methods for cluster detection. Journal of Statistical Computation and Simulation, 92(16):3343–
+3372.
+
+Kulldorff, M. (1997). A spatial scan statistic. Communications in Statistics-Theory and methods, 26(6):1481–
+1496.
+
+Kulldorff, M., Huang, L., Pickle, L., and Duczmal, L. (2006). An elliptic spatial scan statistic. Statistics in
+medicine, 25(22):3929–3943.
+
+Kulldorff, M. and Nagarwalla, N. (1995). Spatial disease clusters: detection and inference. Statistics in
+medicine, 14(8):799–810.
+
+Neill, D. B. (2012). Fast subset scan for spatial pattern detection. Journal of the Royal Statistical Society:
+Series B (Statistical Methodology), 74(2):337–360.
+
+French, Joshua P., Meysami, M, and Lipner, Ettie M. (2023+). Prefiltered Component-based Greedy (PreCoG) Scan Method. Submitted.
+
+Patil, G. P. and Taillie, C. (2004). Upper level set scan statistic for detecting arbitrarily shaped hotspots.
+Environmental and Ecological statistics, 11(2):183–197.
+
+Tango, T. and Takahashi, K. (2005). A flexibly shaped spatial scan statistic for detecting clusters. International
+journal of health geographics, 4(1):11.
+
+Tango, T. and Takahashi, K. (2012). A flexible spatial scan statistic with a restricted likelihood ratio for
+detecting disease clusters. Statistics in medicine, 31(30):4207–4218.
